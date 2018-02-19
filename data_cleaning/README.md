@@ -1,5 +1,5 @@
-getdata-006-project
-===================
+data_cleaning
+=============
 
 Course project for Coursera class "Getting and Cleaning Data"
 
