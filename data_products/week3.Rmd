@@ -1,0 +1,47 @@
+---
+title: "Developing Data Products - Week 3 Assignment"
+author: "sweitzen"
+date: "February 4, 2018"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Plotly Scatterplot Demo
+
+```{r message=FALSE}
+library(plotly)
+data(iris)
+p <- plot_ly(data=iris, 
+             x=~Sepal.Length, 
+             y=~Petal.Length, 
+             color=~Species) %>%
+    layout(title="Iris data: Petal Length vs Sepal Length",
+           scene=list(
+               xaxis=list(title="Sepal Length"),
+               yaxis=list(title="Petal Length")
+           )
+    )
+p
+```
+
+## Plotly 3D Plot Demo
+
+```{r message=FALSE}
+library(plotly)
+p <- plot_ly(x=iris$Sepal.Length, 
+             y=iris$Sepal.Width, 
+             z=iris$Petal.Length,
+             color=iris$Species,
+             marker = list(size = 2)) %>%
+    layout(title="Iris data: 3D Chart",
+           scene=list(
+               xaxis=list(title="Sepal Length"),
+               yaxis=list(title="Sepal Width"),
+               zaxis=list(title="Petal Length")
+           )
+    )
+p
+```

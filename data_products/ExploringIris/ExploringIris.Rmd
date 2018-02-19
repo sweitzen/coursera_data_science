@@ -1,0 +1,66 @@
+---
+title: "Exploring Iris Pitch"
+author: "Scott D. Weitzenhoffer"
+date: "February 6, 2018"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Iris Data
+
+This famous (Fisher's or Anderson's) iris data set gives the measurements in
+centimeters of the variables sepal length and width and petal length and width,
+respectively, for 50 flowers from each of 3 species of iris. The species are
+Iris setosa, versicolor, and virginica.
+
+###Source
+
+_Fisher, R. A. (1936) The use of multiple measurements in taxonomic problems. 
+Annals of Eugenics, 7, Part II, 179–188._
+
+_The data were collected by Anderson, Edgar (1935). The irises of the Gaspe 
+Peninsula, Bulletin of the American Iris Society, 59, 2–5._
+
+
+## Concept
+
+You've extensively explored this Iris data set in R.
+
+Wouldn't you like to share your love of this data set with other people who
+don't have R installed on their system?
+
+## Plotly and Shiny
+
+Using Shiny and Plotly, you can deliver to your audience a beautiful 3D plot of
+iris data, Your users can pick which of Sepal Length, Sepal Width, Petal Length,
+and Petal Width to plot, and produce plots like this:
+
+```{r message=FALSE}
+library(plotly)
+p <- plot_ly(x=iris$Sepal.Length, 
+             y=iris$Sepal.Width, 
+             z=iris$Petal.Length,
+             color=iris$Species,
+             marker = list(size = 2)) %>%
+    layout(title="Iris data: 3D Chart",
+           scene=list(
+               xaxis=list(title="Sepal Length"),
+               yaxis=list(title="Sepal Width"),
+               zaxis=list(title="Petal Length"),
+               autosize=FALSE,
+               width=250,
+               height=250
+           )
+    )
+p
+```
+
+## Try it today!
+
+Head over to [Exploring Iris](https://sweitzen.shinyapps.io/ExploringIris/),
+and try it for yourself!
+
+Exploring Iris works on Chrome and Internet Explorer, but not on Firefox.
