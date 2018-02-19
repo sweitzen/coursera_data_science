@@ -1,0 +1,200 @@
+---
+title: "Practical Machine Learning Project"
+author: "Scott D. Weitzenhoffer"
+date: "February 5, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Cleaning
+
+Load the [Human Activity Recognition](http://groupware.les.inf.puc-rio.br/har)
+dataset:
+```{r load_data}
+urlTrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+urlQuiz <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(urlTrain))
+quiz <- read.csv(url(urlQuiz))
+```
+
+`training` has dimension (`r dim(training)`); 
+`quiz` has dimension (`r dim(quiz)`).
+
+Running `View(quiz)`, it appears many columns are all NA. Let's see if this
+is true in `training`:
+```{r num_NA}
+numNATraining <- sapply(training, function(y) sum(is.na(y)))
+numNAQuiz <- sapply(quiz, function(y) sum(is.na(y)))
+```
+
+Many columns have 19216 NAs; the rest nave no NAs. Let's get only the columns
+that have no NAs:
+```{r get_cols}
+colsTraining <- names(numNATraining[numNATraining == 0])
+colsQuiz <- names(numNAQuiz[numNAQuiz == 0])
+```
+
+`training` has `r length(colsTraining)` non-NA columns, and `quiz` has 
+`r length(colsQuiz)` non-NA columns.
+
+Which columns of `quiz` don't overlap with `training`?
+```{r}
+colsQuiz[!(colsQuiz %in% colsTraining)]
+```
+
+Only "problem_id" is missing, which makes sense.
+
+The columns of `training` that do overlap with `quiz` (plus "classe") are the
+only ones we should investigate, since the rest aren't in `quiz`.
+```{r remove_bad_cols}
+cols <-colsTraining[(colsTraining %in% colsQuiz)]
+training.raw <- training[, c(cols, "classe")]
+quiz <- quiz[, colsQuiz]
+```
+
+Check for constant variables in `training.raw` by classe:
+```{r check_constant_by_classe}
+for (classe in unique(training.raw$classe)) {
+    no_var <- sapply(training.raw[training.raw$classe == classe, 8:59], 
+                     function(x) {all(duplicated(x)[-1L])})
+    print(c(classe, names(training.raw[, 8:59])[no_var]))
+}
+```
+
+All good there. How about by user_name?
+```{r check_constant_by_user}
+for (username in unique(training.raw$user_name)) {
+    no_var <- sapply(training.raw[training.raw$user_name == username, 8:59], 
+                     function(x) {all(duplicated(x)[-1L])})
+    print(c(username, names(training.raw[, 8:59])[no_var]))
+}
+```
+
+Let's try to impute the missing values by modeling them from the other data.
+First, "adelmo" and "roll_forearm", "pitch_forearm", "yaw_forearm": we can
+probably model these from the remaining forearm variables.
+```{r impute1, message=FALSE}
+library(caret)
+cols <- c("total_accel_forearm", 
+          "gyros_forearm_x", "gyros_forearm_y", "gyros_forearm_z", 
+          "accel_forearm_x", "accel_forearm_y", "accel_forearm_z", 
+          "magnet_forearm_x", "magnet_forearm_y", "magnet_forearm_z")
+x <- training.raw[training.raw$user_name != "adelmo", cols]
+
+for (val in c("roll_forearm", "pitch_forearm", "yaw_forearm")) {
+    y <- training.raw[training.raw$user_name != "adelmo", val]
+    pred <- predict(train(y=y, x=x, method="lm"),
+                    training.raw[training.raw$user_name == "adelmo", cols])
+    training.raw[training.raw$user_name == "adelmo", val] <- pred
+}
+```
+
+Similarly for "jeremy" and "roll_arm", "pitch_arm", "yaw_arm": we can
+probably model these from the remaining arm variables.
+```{r impute2}
+cols <- c("total_accel_arm", 
+          "gyros_arm_x", "gyros_arm_y", "gyros_arm_z", 
+          "accel_arm_x", "accel_arm_y", "accel_arm_z", 
+          "magnet_arm_x", "magnet_arm_y", "magnet_arm_z")
+x <- training.raw[training.raw$user_name != "jeremy", cols]
+
+for (val in c("roll_arm", "pitch_arm", "yaw_arm")) {
+    y <- training.raw[training.raw$user_name != "jeremy", val]
+    pred <- predict(train(y=y, x=x, method="lm"),
+                    training.raw[training.raw$user_name == "jeremy", cols])
+    training.raw[training.raw$user_name == "jeremy", val] <- pred
+}
+```
+
+Split `training.raw` into `training` and `testing` sets:
+```{r partition_data}
+set.seed(33733)
+
+inTrain <- createDataPartition(training.raw$classe, p = 3/4)[[1]]
+training <- training.raw[ inTrain, ]
+testing <- training.raw[-inTrain, ]
+```
+
+## Exploratory Data Analysis
+
+Subset training for one subject:
+```{r subset_1}
+sub1 <- subset(training, user_name == "adelmo")[, 8:60]
+```
+
+The names include measurements from "belt", "arm", "dumbbell", and "forearm".
+Let's try clustering by these broad measurement categories.
+```{r show_cluster1}
+for (var in c("belt", "arm", "dumbbell", "forearm")) {
+    colsClust <- colsTraining[grepl(paste0("_", var, "_"), colsTraining)]
+    
+    mdist <- dist(sub1[, colsClust])
+    hclustering <- hclust(mdist)
+    
+    source("myplclust.R")
+    print(paste0("Cluster by ", var))
+    myplclust(hclustering, lab.col=unclass(sub1$classe))
+    legend("topright", pch=19, col=unique((unclass(sub1$classe))), 
+           legend=levels(sub1$classe))
+}
+```
+
+Well, that wasn't helpful. Rather than mucking around with SVD and the like, 
+let's just build a Random Forest model to predict classe on user_name and the 
+other likely predictive variables. (i.e, we will exclude X, timestamps, and 
+windows)
+
+## Building the model
+
+First, we'll configure parallel processing, as outlined in [lgreski's github page](https://github.com/lgreski/datasciencectacontent/blob/master/markdown/pml-randomForestPerformance.md):
+```{r init_parallel, message=FALSE}
+library(parallel)
+library(doParallel)
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+
+fitControl <- trainControl(method = "cv",
+                           number = 5,
+                           allowParallel = TRUE)
+```
+
+Fit the model. We exclude columns that won't aid prediction:
+```{r train_model, cache=TRUE}
+modFit <- train(
+    classe ~ .,
+    data=training[, c(2, 8:60)],
+    method="rf",
+    trControl=fitControl
+)
+```
+
+De-register the parallel processing cluster:
+```{r deregister_parallel}
+stopCluster(cluster)
+registerDoSEQ()
+```
+
+## Results
+
+Check model accuracy against `training`:
+```{r}
+pred <- predict(modFit, training[, c(2, 8:59)])
+confusionMatrix(training$classe, pred)
+```
+
+Check model accuracy against `testing`:
+```{r}
+pred <- predict(modFit, testing[, c(2, 8:59)])
+confusionMatrix(testing$classe, pred)
+```
+
+This looks good enough, so predict against `quiz`:
+```{r}
+pred <- predict(modFit, quiz[, c(2, 8:59)])
+data.frame(problem_id=quiz$problem_id, prediction=as.factor(pred))
+```
+
+---
